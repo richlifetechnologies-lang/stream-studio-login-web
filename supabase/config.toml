@@ -1,0 +1,32 @@
+# Supabase project config for local development (supabase CLI).
+# Project id is a local label; set the real one when you link a hosted project.
+project_id = "stream-studio-login"
+
+[api]
+enabled = true
+port = 54321
+
+[db]
+port = 54322
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+site_url = "http://localhost:54321"
+
+# Edge Functions run on the Supabase Edge Runtime (Deno). Set their secrets in
+# the dashboard for production, or in supabase/.env.local for `supabase start`.
+[functions.mint-fal-token]
+verify_jwt = false   # we validate the user JWT ourselves to return clean errors
+
+[functions.proxy-voice]
+verify_jwt = false
+
+[functions.usage-heartbeat]
+verify_jwt = false
+
+[functions.billing-webhook]
+verify_jwt = false   # provider signs the payload; we verify the HMAC instead

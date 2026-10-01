@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stream Studio — Admin</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; background: #0b0f14; color: #e6f6fb; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid #1d2733; background: #0e141b; position: sticky; top: 0; z-index: 5; }
+  h1 { font-size: 15px; margin: 0; letter-spacing: .08em; text-transform: uppercase; color: #35e0e6; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 20px; }
+  .card { background: #0e141b; border: 1px solid #1d2733; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  label { display: block; font-size: 12px; color: #8aa0b2; margin: 10px 0 4px; }
+  input, select, button { font: inherit; }
+  input, select { width: 100%; padding: 9px 11px; border-radius: 8px; border: 1px solid #24303d; background: #0b0f14; color: #e6f6fb; }
+  button { cursor: pointer; border-radius: 8px; border: 1px solid #24303d; background: #16202b; color: #e6f6fb; padding: 8px 14px; }
+  button.primary { background: #0e7f86; border-color: #12a5ad; color: #04121a; font-weight: 700; }
+  button.danger { background: #3a1620; border-color: #6b2233; color: #ffb3c1; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #1a2430; }
+  th { color: #8aa0b2; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .pill.active, .pill.trialing { background: #0d3320; color: #4ade80; }
+  .pill.past_due { background: #3a2d0d; color: #facc15; }
+  .pill.canceled, .pill.expired { background: #3a1620; color: #fb7185; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .row > div { flex: 1; min-width: 150px; }
+  .muted { color: #6b8296; font-size: 12px; }
+  .hidden { display: none; }
+  .err { color: #fb7185; font-size: 13px; margin-top: 8px; }
+  .ok { color: #4ade80; font-size: 13px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Stream Studio · Admin</h1>
+  <div id="who" class="muted"></div>
+</header>
+
+<div class="wrap">
+  <!-- Sign in -->
+  <div id="authCard" class="card">
+    <h2 style="font-size:14px;margin:0 0 6px">Admin sign in</h2>
+    <p class="muted" style="margin:0 0 12px">Sign in with the Supabase account whose profile has <code>is_admin = true</code>.</p>
+    <label>Email</label>
+    <input id="email" type="email" autocomplete="username" placeholder="you@yourdomain.com" />
+    <label>Password</label>
+    <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+    <div style="margin-top:12px"><button id="signIn" class="primary">Sign in</button></div>
+    <div id="authMsg"></div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dash" class="hidden">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="font-size:14px;margin:0">Grant / edit a subscription</h2>
+        <button id="signOut">Sign out</button>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div><label>User email</label><input id="gEmail" type="email" placeholder="customer@domain.com" /></div>
+        <div><label>Plan</label><select id="gPlan"></select></div>
+        <div><label>Status</label>
+          <select id="gStatus">
+            <option value="active">active</option>
+            <option value="trialing">trialing</option>
+            <option value="past_due">past_due</option>
+            <option value="canceled">canceled</option>
+            <option value="expired">expired</option>
+          </select>
+        </div>
+        <div><label>Period end (optional)</label><input id="gEnd" type="date" /></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div><label>Minutes used</label><input id="gUsed" type="number" min="0" value="0" /></div>
+        <div style="flex:0 0 auto"><button id="grant" class="primary">Save subscription</button></div>
+      </div>
+      <div id="grantMsg"></div>
+      <p class="muted" style="margin-top:10px">Manual grants use <code>billing_provider = 'manual'</code>. The user must already have signed up once (so a profile exists).</p>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="font-size:14px;margin:0">Subscriptions</h2>
+        <button id="refresh">Refresh</button>
+      </div>
+      <div style="overflow:auto;margin-top:12px">
+        <table id="subsTable">
+          <thead><tr><th>User</th><th>Plan</th><th>Status</th><th>Minutes</th><th>Period end</th><th>Provider</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="font-size:14px;margin:0 0 12px">Recent usage</h2>
+      <div style="overflow:auto">
+        <table id="usageTable">
+          <thead><tr><th>User</th><th>Tab</th><th>Started</th><th>Ended</th><th>Minutes</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── CONFIG: fill these from your Supabase project (Settings → API). ─────────
+  // The anon key is safe to expose here; admin powers come from the signed-in
+  // user's is_admin flag + RLS, NOT from this key.
+  const SUPABASE_URL = "https://YOUR-PROJECT.supabase.co";
+  const SUPABASE_ANON_KEY = "YOUR-ANON-KEY";
+  // ───────────────────────────────────────────────────────────────────────────
+
+  const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const $ = (id) => document.getElementById(id);
+
+  async function isAdmin(userId) {
+    const { data } = await sb.from("profiles").select("is_admin").eq("id", userId).maybeSingle();
+    return !!data?.is_admin;
+  }
+
+  async function showDash(user) {
+    if (!(await isAdmin(user.id))) {
+      $("authMsg").innerHTML = '<div class="err">This account is not an admin. Set is_admin = true for this user in the profiles table (Supabase Studio), then sign in again.</div>';
+      await sb.auth.signOut();
+      return;
+    }
+    $("who").textContent = user.email ?? "";
+    $("authCard").classList.add("hidden");
+    $("dash").classList.remove("hidden");
+    await Promise.all([loadPlans(), loadSubs(), loadUsage()]);
+  }
+
+  async function loadPlans() {
+    const { data } = await sb.from("plans").select("id, name, monthly_minutes").eq("active", true).order("price_cents");
+    $("gPlan").innerHTML = (data || []).map((p) =>
+      `<option value="${p.id}">${p.name} — ${p.monthly_minutes === 0 ? "unlimited" : p.monthly_minutes + " min"}</option>`).join("");
+  }
+
+  async function profileName(id, email) { return email || id.slice(0, 8); }
+
+  async function loadSubs() {
+    const { data, error } = await sb.from("subscriptions")
+      .select("id, user_id, plan_id, status, minutes_used, current_period_end, billing_provider")
+      .order("updated_at", { ascending: false }).limit(200);
+    if (error) return console.error(error);
+    // Fetch emails for these users.
+    const ids = [...new Set((data || []).map((r) => r.user_id))];
+    const { data: profs } = await sb.from("profiles").select("id, email").in("id", ids);
+    const emailOf = Object.fromEntries((profs || []).map((p) => [p.id, p.email]));
+    const plans = {}; { const { data: pl } = await sb.from("plans").select("id, name, monthly_minutes"); (pl || []).forEach((p) => plans[p.id] = p); }
+    $("subsTable").querySelector("tbody").innerHTML = (data || []).map((r) => {
+      const plan = plans[r.plan_id] || {};
+      const mins = plan.monthly_minutes === 0 ? `${r.minutes_used} / ∞` : `${r.minutes_used} / ${plan.monthly_minutes}`;
+      const end = r.current_period_end ? new Date(r.current_period_end).toLocaleDateString() : "—";
+      return `<tr>
+        <td>${emailOf[r.user_id] || r.user_id.slice(0, 8)}</td>
+        <td>${plan.name || r.plan_id}</td>
+        <td><span class="pill ${r.status}">${r.status}</span></td>
+        <td>${mins}</td>
+        <td>${end}</td>
+        <td class="muted">${r.billing_provider || "—"}</td>
+        <td style="white-space:nowrap">
+          <button data-act="reset" data-id="${r.user_id}">Reset min</button>
+          <button class="danger" data-act="cancel" data-id="${r.user_id}">Cancel</button>
+        </td></tr>`;
+    }).join("") || '<tr><td colspan="7" class="muted">No subscriptions yet.</td></tr>';
+  }
+
+  async function loadUsage() {
+    const { data } = await sb.from("usage_sessions")
+      .select("user_id, tab, started_at, ended_at, minutes")
+      .order("started_at", { ascending: false }).limit(100);
+    const ids = [...new Set((data || []).map((r) => r.user_id))];
+    const { data: profs } = await sb.from("profiles").select("id, email").in("id", ids);
+    const emailOf = Object.fromEntries((profs || []).map((p) => [p.id, p.email]));
+    $("usageTable").querySelector("tbody").innerHTML = (data || []).map((r) => `<tr>
+      <td>${emailOf[r.user_id] || r.user_id.slice(0, 8)}</td>
+      <td>${r.tab || "—"}</td>
+      <td>${new Date(r.started_at).toLocaleString()}</td>
+      <td>${r.ended_at ? new Date(r.ended_at).toLocaleString() : '<span class="pill active">live</span>'}</td>
+      <td>${Number(r.minutes).toFixed(2)}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">No usage yet.</td></tr>';
+  }
+
+  // ── Events ────────────────────────────────────────────────────────────────
+  $("signIn").onclick = async () => {
+    $("authMsg").textContent = "";
+    const { data, error } = await sb.auth.signInWithPassword({ email: $("email").value.trim(), password: $("password").value });
+    if (error) { $("authMsg").innerHTML = `<div class="err">${error.message}</div>`; return; }
+    await showDash(data.user);
+  };
+
+  $("signOut").onclick = async () => { await sb.auth.signOut(); location.reload(); };
+  $("refresh").onclick = () => { loadSubs(); loadUsage(); };
+
+  $("grant").onclick = async () => {
+    $("grantMsg").textContent = "";
+    const email = $("gEmail").value.trim().toLowerCase();
+    if (!email) { $("grantMsg").innerHTML = '<div class="err">Enter a user email.</div>'; return; }
+    const { data: prof } = await sb.from("profiles").select("id").ilike("email", email).maybeSingle();
+    if (!prof) { $("grantMsg").innerHTML = '<div class="err">No account with that email yet — they must sign up once first.</div>'; return; }
+    const end = $("gEnd").value ? new Date($("gEnd").value + "T23:59:59Z").toISOString() : null;
+    const row = {
+      user_id: prof.id, plan_id: $("gPlan").value, status: $("gStatus").value,
+      minutes_used: Number($("gUsed").value || 0), current_period_end: end,
+      billing_provider: "manual", cancel_at_period_end: false,
+    };
+    const { error } = await sb.from("subscriptions").upsert(row, { onConflict: "user_id" });
+    if (error) { $("grantMsg").innerHTML = `<div class="err">${error.message}</div>`; return; }
+    $("grantMsg").innerHTML = '<div class="ok">Saved.</div>';
+    loadSubs();
+  };
+
+  document.addEventListener("click", async (e) => {
+    const b = e.target.closest("button[data-act]"); if (!b) return;
+    const id = b.dataset.id;
+    if (b.dataset.act === "reset") await sb.from("subscriptions").update({ minutes_used: 0 }).eq("user_id", id);
+    if (b.dataset.act === "cancel") await sb.from("subscriptions").update({ status: "canceled" }).eq("user_id", id);
+    loadSubs();
+  });
+
+  // Restore an existing session on load.
+  sb.auth.getSession().then(({ data }) => { if (data?.session) showDash(data.session.user); });
+</script>
+</body>
+</html>

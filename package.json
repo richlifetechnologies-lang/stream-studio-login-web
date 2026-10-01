@@ -1,0 +1,18 @@
+{
+  "name": "stream-studio-login-web",
+  "version": "0.1.0",
+  "description": "Auth, licensing gateway and subscription/usage backend for Stream Studio (Supabase Edge Functions + admin panel + client SDK).",
+  "private": false,
+  "type": "module",
+  "scripts": {
+    "supabase:login": "supabase login",
+    "supabase:link": "supabase link --project-ref $SUPABASE_PROJECT_REF",
+    "db:reset": "supabase db reset",
+    "db:push": "supabase db push",
+    "functions:serve": "supabase functions serve --env-file supabase/.env.local",
+    "functions:deploy": "supabase functions deploy"
+  },
+  "devDependencies": {
+    "supabase": "^1.200.3"
+  }
+}
