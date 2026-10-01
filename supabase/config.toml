@@ -27,6 +27,3 @@ verify_jwt = false
 
 [functions.usage-heartbeat]
 verify_jwt = false
-
-[functions.billing-webhook]
-verify_jwt = false   # provider signs the payload; we verify the HMAC instead

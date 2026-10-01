@@ -71,8 +71,8 @@ create table if not exists public.subscriptions (
   status               sub_status not null default 'trialing',
   current_period_end   timestamptz,                 -- null = no expiry
   minutes_used         integer not null default 0,  -- resets each period
-  billing_provider     text,                        -- 'lemonsqueezy' | 'paddle' | 'manual'
-  billing_ref          text,                        -- provider subscription/order id
+  billing_provider     text,                        -- 'manual' (admin-granted; no online billing)
+  billing_ref          text,                        -- optional offline reference (invoice/receipt id)
   cancel_at_period_end boolean not null default false,
   created_at           timestamptz not null default now(),
   updated_at           timestamptz not null default now(),
@@ -151,7 +151,7 @@ drop policy if exists plans_select on public.plans;
 create policy plans_select on public.plans for select using (auth.role() = 'authenticated');
 
 -- subscriptions: user reads own; admins read all. Writes only via service role
--- (Edge Functions / billing webhook), so no insert/update policy for clients.
+-- (Edge Functions / admin panel), so no insert/update policy for clients.
 drop policy if exists subs_select_own on public.subscriptions;
 create policy subs_select_own on public.subscriptions
   for select using (

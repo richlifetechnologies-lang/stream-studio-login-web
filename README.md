@@ -26,14 +26,16 @@ Desktop app ──sign in──▶ Supabase Auth (email/password)
      ├──proxy-voice─────▶ Edge Function ──checks 'voice' entitlement──▶ forwards to ElevenLabs (master key)
      ├──usage-heartbeat─▶ Edge Function ──credits minutes to subscription──▶ Postgres
      │
-Lemon Squeezy / Paddle ──webhook──▶ billing-webhook ──upserts──▶ subscriptions
+Administrator ──admin panel──▶ grants / edits / cancels ──▶ subscriptions
 ```
 
 ## Stack (chosen for low cost + low maintenance)
 - **Supabase** — auth, Postgres, Row-Level Security, Edge Functions (Deno), and
   **Supabase Studio** as a day-one admin UI. Free tier to start.
-- **Lemon Squeezy or Paddle** — merchant-of-record subscriptions (they handle
-  global tax, invoicing, dunning). You only mirror state via a webhook.
+- **Contact-the-administrator access** — there is **no online self-serve billing**.
+  A user contacts you (email/DM/etc.), you agree payment offline, and you grant or
+  extend their subscription from the admin panel. Simple, no card processing, no
+  merchant-of-record, no webhook to maintain.
 - **Admin panel** (`admin/index.html`) — a lightweight, `is_admin`-gated web page
   for granting/editing/canceling subscriptions and viewing usage.
 
@@ -46,7 +48,6 @@ supabase/
     mint-fal-token/      # authorize + mint short-lived fal JWT (the chokepoint)
     proxy-voice/         # authorize + proxy ElevenLabs (keeps voice key server-side)
     usage-heartbeat/     # meter minutes during/after a call
-    billing-webhook/     # Lemon Squeezy / Paddle → subscriptions
 admin/index.html         # admin control panel
 client/
   stream-studio-auth.ts  # drop-in SDK for the desktop app
@@ -63,18 +64,15 @@ At [supabase.com](https://supabase.com), create a project. Grab the **URL**,
 npm i -g supabase
 supabase login
 supabase link --project-ref YOUR_PROJECT_REF
-supabase db push          # applies both migrations
+supabase db push          # applies the migration
 ```
-(Or paste the two files in `supabase/migrations/` into the SQL editor.)
+(Or paste `supabase/migrations/20260930000000_init.sql` into the SQL editor.)
 
 ### 3. Set Edge Function secrets (dashboard → Edge Functions → Secrets)
 ```
 FAL_KEY=...                 # your master fal.ai key
 ELEVENLABS_KEY=...          # your master ElevenLabs key
 SUPABASE_SERVICE_ROLE_KEY=...
-BILLING_PROVIDER=lemonsqueezy
-BILLING_WEBHOOK_SECRET=...
-PLAN_MAP=ls_variant_123=starter,ls_variant_456=pro
 ```
 > These secrets never live in this repo. The anon key is the only value that ships
 > to the client, and it grants nothing by itself (RLS + `is_admin` enforce access).
@@ -84,7 +82,6 @@ PLAN_MAP=ls_variant_123=starter,ls_variant_456=pro
 supabase functions deploy mint-fal-token
 supabase functions deploy proxy-voice
 supabase functions deploy usage-heartbeat
-supabase functions deploy billing-webhook
 ```
 
 ### 5. Make yourself an admin
@@ -96,14 +93,15 @@ account (sign up once first so the row exists).
 `SUPABASE_ANON_KEY` at the top, and host it anywhere static (or just open locally).
 Sign in with your admin account.
 
-### 7. Wire up billing
-Create products in Lemon Squeezy/Paddle matching the `plans` table, set
-`PLAN_MAP`, and point the provider's webhook at:
-```
-https://YOUR-PROJECT.supabase.co/functions/v1/billing-webhook
-```
-If a customer pays **before** signing up, the grant is stashed in `pending_grants`
-and auto-attaches the first time that email creates an account.
+### 7. Grant access (contact-the-administrator model)
+There is no online checkout. When a user contacts you and you've agreed payment
+offline:
+1. They sign up once in the app (so a `profiles` row exists).
+2. In the admin panel, find their account and **Grant / edit subscription** — pick a
+   plan, set status `active`, and set `current_period_end`. This writes
+   `billing_provider = 'manual'`.
+3. To renew, extend `current_period_end`; to reset a metered plan, use **Reset
+   minutes**; to cut access, **Cancel**.
 
 ### 8. Connect the desktop app
 See [`client/integration-guide.md`](client/integration-guide.md). The existing
