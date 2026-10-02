@@ -42,17 +42,53 @@ Administrator ──admin panel──▶ grants / edits / cancels ──▶ subs
 ## Repository layout
 ```
 supabase/
-  migrations/            # SQL schema: profiles, plans, subscriptions, devices, usage
+  migrations/            # SQL schema: profiles, plans, subscriptions, devices,
+                         #   usage, gateway_keys + admin write policies
   functions/
-    _shared/             # cors, auth, db clients, entitlement checks
+    _shared/             # cors, auth, db clients, entitlement checks, key resolution
     mint-fal-token/      # authorize + mint short-lived fal JWT (the chokepoint)
     proxy-voice/         # authorize + proxy ElevenLabs (keeps voice key server-side)
     usage-heartbeat/     # meter minutes during/after a call
-admin/index.html         # admin control panel
+admin/index.html         # admin control panel (3 tabs: Subscriptions, Plans, Keys)
 client/
   stream-studio-auth.ts  # drop-in SDK for the desktop app
   integration-guide.md   # how to wire it into stream-studio later
 ```
+
+## Admin panel
+`admin/index.html` is a static, `is_admin`-gated page with five tabs. Access is
+**account-based — there are no license keys.**
+- **Users** — grant/edit an account: plan, status, period end, and a **prepaid
+  minute wallet** (allocated minutes, or unlimited). The plan sets capability
+  (audio-only vs video+audio); the wallet is what you allocate and the user
+  consumes until it hits zero. Per row: **top-up minutes**, reset, suspend/resume,
+  **unbind devices**, delete, and an optional **linked API key pair**. Searchable.
+- **Plans & Pricing** — edit each plan's price, monthly minutes (0 = unlimited),
+  device limit, features (`video` / `voice` / `portrait_obs`), and active flag;
+  add or delete plans.
+- **API Key Vault** — store video (fal.ai) + voice (ElevenLabs) key pairs with
+  notes, keep several on file, mark one as the **global default** (master
+  fallback), edit, or delete. Readable only by admins and the server (RLS).
+- **Pricing & Profit** — set verified base API costs (video / voice-clone /
+  natural audio $ per sec) and target profit margin + safety floor; a live
+  cost/profit table per call mode; and an interactive **session profit simulator**.
+- **Timer & Burn Rates** — per-mode **burn-rate multipliers** (1 real minute = N
+  wallet minutes: video+cloned-voice faster, audio-only slower), low-minutes
+  warning, auto-terminate at zero; a **rule profit/loss tester** and a
+  **minute-package pricing matrix** (break-even + recommended retail).
+
+### How minutes drain (burn rate)
+`usage-heartbeat` stores **real** elapsed minutes on the session, then credits
+`real × multiplier` to the wallet, where the multiplier comes from `timer_config`
+for that call mode (`video-audio` → video_voice, `audio-only` → audio_only,
+`video-only` → video_only). Entitlement stops the call when the wallet is empty.
+
+### How a key is chosen for a call
+`_shared/keys.ts` resolves, in order: the key pair **linked to the user**
+(`subscriptions.key_id`) → the **default** `gateway_keys` row → the
+`FAL_KEY` / `ELEVENLABS_KEY` **env secret**. So the dashboard is optional; env
+secrets remain the most secure fallback.
+
 
 ## Setup
 ### 1. Create a Supabase project
@@ -64,9 +100,9 @@ At [supabase.com](https://supabase.com), create a project. Grab the **URL**,
 npm i -g supabase
 supabase login
 supabase link --project-ref YOUR_PROJECT_REF
-supabase db push          # applies the migration
+supabase db push          # applies all migrations
 ```
-(Or paste `supabase/migrations/20260930000000_init.sql` into the SQL editor.)
+(Or paste the files in `supabase/migrations/` into the SQL editor, in order.)
 
 ### 3. Set Edge Function secrets (dashboard → Edge Functions → Secrets)
 ```
@@ -115,7 +151,8 @@ See [`client/integration-guide.md`](client/integration-guide.md). The existing
   feature included? minutes left? device under the limit? Only then does it mint a
   token — so time/feature control is enforced server-side and can't be bypassed by
   editing the client.
-- `usage-heartbeat` credits elapsed minutes every 30s and on stop.
+- `usage-heartbeat` credits elapsed minutes every 30s and on stop, applying the
+  per-mode **burn-rate multiplier** from `timer_config` to the prepaid wallet.
 
 ## Security notes & limits
 - A short-lived fal token (≤120s, model-scoped) is still visible to its own client;
@@ -125,5 +162,8 @@ See [`client/integration-guide.md`](client/integration-guide.md). The existing
 - This repo contains **no secrets**. `.env.example` lists the variables to set.
 
 ## Status
-Phase 1 scaffold: schema, four Edge Functions, admin panel, and client SDK. Not yet
-deployed — follow Setup above. The `stream-studio` desktop app is unchanged.
+Phase 2: account-based access (no license keys) with a prepaid minute wallet,
+per-mode burn rates, an API key vault, and a pricing/profit engine — merged from
+the RICH X CAM LIVE admin. Schema (3 migrations), three Edge Functions, a 5-tab
+admin panel, and a client SDK. Not yet deployed — follow Setup above. The
+`stream-studio` desktop app is unchanged.

@@ -9,6 +9,7 @@
 import { corsHeaders, preflight, json, fail } from "../_shared/cors.ts";
 import { requireUser } from "../_shared/auth.ts";
 import { checkEntitlement } from "../_shared/entitlements.ts";
+import { resolveElevenlabsKey } from "../_shared/keys.ts";
 
 const ELEVEN_BASE = "https://api.elevenlabs.io";
 
@@ -39,8 +40,8 @@ Deno.serve(async (req: Request) => {
     const ent = await checkEntitlement(user.id, "voice", deviceId);
     if (!ent.allowed) return fail("not entitled", 403, { reason: ent.reason });
 
-    const key = Deno.env.get("ELEVENLABS_KEY");
-    if (!key) return fail("server missing ELEVENLABS_KEY", 500);
+    const key = await resolveElevenlabsKey(user.id);
+    if (!key) return fail("server has no voice key (link one in the admin panel or set ELEVENLABS_KEY)", 500);
 
     const upstream = await fetch(ELEVEN_BASE + path, {
       method,

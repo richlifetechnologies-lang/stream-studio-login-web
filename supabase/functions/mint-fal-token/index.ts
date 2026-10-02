@@ -11,6 +11,7 @@ import { corsHeaders, preflight, json, fail } from "../_shared/cors.ts";
 import { requireUser } from "../_shared/auth.ts";
 import { adminClient } from "../_shared/db.ts";
 import { checkEntitlement } from "../_shared/entitlements.ts";
+import { resolveFalKey } from "../_shared/keys.ts";
 
 const TOKEN_TTL_SECONDS = 120;
 
@@ -30,8 +31,8 @@ Deno.serve(async (req: Request) => {
     const ent = await checkEntitlement(user.id, "video", deviceId);
     if (!ent.allowed) return fail("not entitled", 403, { reason: ent.reason });
 
-    const falKey = Deno.env.get("FAL_KEY");
-    if (!falKey) return fail("server missing FAL_KEY", 500);
+    const falKey = await resolveFalKey(user.id);
+    if (!falKey) return fail("server has no fal.ai key (link one in the admin panel or set FAL_KEY)", 500);
 
     // Open a metered session before minting (so we can credit minutes on stop).
     const db = adminClient();

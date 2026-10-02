@@ -24,7 +24,7 @@ Deno.serve(async (req: Request) => {
     const db = adminClient();
     const { data: session, error: sErr } = await db
       .from("usage_sessions")
-      .select("id, user_id, started_at, ended_at, minutes")
+      .select("id, user_id, started_at, ended_at, minutes, tab")
       .eq("id", sessionId)
       .maybeSingle();
     if (sErr) return fail(sErr.message, 500);
@@ -35,7 +35,8 @@ Deno.serve(async (req: Request) => {
 
     // Minutes elapsed since the session started (or since last credit) — we
     // recompute from started_at each time and store the cumulative total, so
-    // repeated heartbeats are idempotent.
+    // repeated heartbeats are idempotent. `minutes` stays in REAL elapsed time;
+    // the burn-rate multiplier is applied only when crediting the wallet.
     const elapsedMin = Math.max(0, (Date.now() - new Date(session.started_at).getTime()) / 60000);
     const rounded = Math.round(elapsedMin * 1000) / 1000;
     const previouslyCredited = Number(session.minutes) || 0;
@@ -47,25 +48,43 @@ Deno.serve(async (req: Request) => {
     const { error: uErr } = await db.from("usage_sessions").update(patch).eq("id", sessionId);
     if (uErr) return fail(uErr.message, 500);
 
-    // Credit the delta to the subscription counter (unlimited plans store 0 cap).
+    // Burn-rate multiplier for this call mode (1 real minute = N wallet minutes).
+    const { data: timer } = await db
+      .from("timer_config")
+      .select("video_only_multiplier, audio_only_multiplier, video_voice_multiplier")
+      .eq("id", 1)
+      .maybeSingle();
+    const multFor = (tab: string | null): number => {
+      // deno-lint-ignore no-explicit-any
+      const t: any = timer ?? {};
+      if (tab === "audio-only") return Number(t.audio_only_multiplier ?? 0.5);
+      if (tab === "video-audio") return Number(t.video_voice_multiplier ?? 1.5);
+      return Number(t.video_only_multiplier ?? 1.0); // video-only + default
+    };
+    const multiplier = multFor(session.tab ?? null);
+    const burnedDelta = Math.round(delta * multiplier * 1000) / 1000;
+
+    // Credit the burned delta to the subscription wallet (skip if unlimited).
     let totalUsed: number | null = null;
     let monthlyMinutes: number | null = null;
-    if (delta > 0 || end) {
+    if (burnedDelta > 0 || end) {
       const { data: sub } = await db
         .from("subscriptions")
-        .select("plan_id, minutes_used")
+        .select("plan_id, minutes_used, minutes_allocated, unlimited")
         .eq("user_id", user.id)
         .maybeSingle();
       if (sub) {
         const { data: plan } = await db.from("plans").select("monthly_minutes").eq("id", sub.plan_id).single();
-        monthlyMinutes = plan?.monthly_minutes ?? null;
-        if (monthlyMinutes !== 0) {
-          if (delta > 0) {
+        const unlimited = sub.unlimited === true || (plan?.monthly_minutes ?? 0) === 0;
+        const allocated = sub.minutes_allocated ?? plan?.monthly_minutes ?? null;
+        monthlyMinutes = unlimited ? null : allocated;
+        if (!unlimited) {
+          if (burnedDelta > 0) {
             await db.from("subscriptions")
-              .update({ minutes_used: (sub.minutes_used || 0) + delta })
+              .update({ minutes_used: (sub.minutes_used || 0) + burnedDelta })
               .eq("user_id", user.id);
           }
-          totalUsed = (sub.minutes_used || 0) + delta;
+          totalUsed = Math.round(((sub.minutes_used || 0) + burnedDelta) * 1000) / 1000;
         }
       }
     }

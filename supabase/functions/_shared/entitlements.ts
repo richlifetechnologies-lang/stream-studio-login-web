@@ -19,6 +19,8 @@ type SubRow = {
   status: string;
   current_period_end: string | null;
   minutes_used: number;
+  minutes_allocated: number | null;
+  unlimited: boolean;
 };
 type PlanRow = {
   id: string;
@@ -41,7 +43,7 @@ export async function checkEntitlement(
 
   const { data: sub, error: subErr } = await db
     .from("subscriptions")
-    .select("plan_id, status, current_period_end, minutes_used")
+    .select("plan_id, status, current_period_end, minutes_used, minutes_allocated, unlimited")
     .eq("user_id", userId)
     .maybeSingle();
   if (subErr) throw new Error(`subscription lookup failed: ${subErr.message}`);
@@ -67,14 +69,17 @@ export async function checkEntitlement(
     return { allowed: false, reason: "feature_not_included", planId: p.id };
   }
 
-  const unlimited = p.monthly_minutes === 0;
-  if (!unlimited && s.minutes_used >= p.monthly_minutes) {
+  // Prepaid minute wallet: admin-granted allocation overrides the plan default;
+  // either the per-account unlimited flag or a 0-minute plan means unlimited.
+  const unlimited = s.unlimited === true || p.monthly_minutes === 0;
+  const allocated = s.minutes_allocated ?? p.monthly_minutes;
+  if (!unlimited && s.minutes_used >= allocated) {
     return {
       allowed: false,
       reason: "out_of_minutes",
       planId: p.id,
       minutesUsed: s.minutes_used,
-      monthlyMinutes: p.monthly_minutes,
+      monthlyMinutes: allocated,
     };
   }
 
@@ -114,6 +119,6 @@ export async function checkEntitlement(
     planId: p.id,
     unlimited,
     minutesUsed: s.minutes_used,
-    monthlyMinutes: p.monthly_minutes,
+    monthlyMinutes: allocated,
   };
 }
