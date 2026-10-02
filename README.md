@@ -178,5 +178,9 @@ Phase 2: account-based access (no license keys) with a prepaid minute wallet,
 per-mode burn rates, an API key vault, and a pricing/profit engine — merged from
 the RICH X CAM LIVE admin. Schema (3 migrations), four Edge Functions (three
 gateway functions + `admin`, which hosts the panel on Supabase's free tier), a
-5-tab admin panel, and a client SDK. Not yet deployed — follow Setup above. The
-`stream-studio` desktop app is unchanged.
+5-tab admin panel, and a client SDK.
+
+**Live:** deployed to Supabase project `onhanfathvfkkliayvrn` via the GitHub
+integration (push to `main` auto-applies migrations + redeploys functions).
+Admin panel: `https://onhanfathvfkkliayvrn.supabase.co/functions/v1/admin`.
+The `stream-studio` desktop app is unchanged.
