@@ -36,8 +36,10 @@ Administrator ──admin panel──▶ grants / edits / cancels ──▶ subs
   A user contacts you (email/DM/etc.), you agree payment offline, and you grant or
   extend their subscription from the admin panel. Simple, no card processing, no
   merchant-of-record, no webhook to maintain.
-- **Admin panel** (`admin/index.html`) — a lightweight, `is_admin`-gated web page
-  for granting/editing/canceling subscriptions and viewing usage.
+- **Admin panel** (`supabase/functions/admin/`) — a lightweight, `is_admin`-gated
+  web page for granting/editing/canceling subscriptions and viewing usage. It is
+  served by an Edge Function, so it is **hosted on Supabase's free tier** with no
+  separate web host.
 
 ## Repository layout
 ```
@@ -49,15 +51,15 @@ supabase/
     mint-fal-token/      # authorize + mint short-lived fal JWT (the chokepoint)
     proxy-voice/         # authorize + proxy ElevenLabs (keeps voice key server-side)
     usage-heartbeat/     # meter minutes during/after a call
-admin/index.html         # admin control panel (3 tabs: Subscriptions, Plans, Keys)
+    admin/               # serves the admin panel HTML (index.ts + index.html)
 client/
   stream-studio-auth.ts  # drop-in SDK for the desktop app
   integration-guide.md   # how to wire it into stream-studio later
 ```
 
 ## Admin panel
-`admin/index.html` is a static, `is_admin`-gated page with five tabs. Access is
-**account-based — there are no license keys.**
+`supabase/functions/admin/` is a static, `is_admin`-gated page with five tabs,
+served by an Edge Function. Access is **account-based — there are no license keys.**
 - **Users** — grant/edit an account: plan, status, period end, and a **prepaid
   minute wallet** (allocated minutes, or unlimited). The plan sets capability
   (audio-only vs video+audio); the wallet is what you allocate and the user
@@ -118,16 +120,26 @@ SUPABASE_SERVICE_ROLE_KEY=...
 supabase functions deploy mint-fal-token
 supabase functions deploy proxy-voice
 supabase functions deploy usage-heartbeat
+supabase functions deploy admin      # hosts the admin panel (see step 6)
 ```
 
 ### 5. Make yourself an admin
 In Supabase Studio → Table editor → `profiles`, set `is_admin = true` for your
 account (sign up once first so the row exists).
 
-### 6. Host the admin panel
-`admin/index.html` is a static file. Open it, set `SUPABASE_URL` and
-`SUPABASE_ANON_KEY` at the top, and host it anywhere static (or just open locally).
-Sign in with your admin account.
+### 6. Open the hosted admin panel
+The panel is served by the `admin` Edge Function on Supabase's free tier — no
+separate web host, and you never commit your URL or anon key. Once deployed
+(step 4), open:
+```
+https://YOUR_PROJECT_REF.supabase.co/functions/v1/admin
+```
+The function injects the project URL and the public anon key at serve time, so
+the page is ready to use. Sign in with your admin account (from step 5).
+
+> Prefer to run it locally without deploying? Open
+> `supabase/functions/admin/index.html` directly in a browser and paste your
+> `SUPABASE_URL` + `SUPABASE_ANON_KEY` over the two placeholder tokens at the top.
 
 ### 7. Grant access (contact-the-administrator model)
 There is no online checkout. When a user contacts you and you've agreed payment
@@ -164,6 +176,7 @@ See [`client/integration-guide.md`](client/integration-guide.md). The existing
 ## Status
 Phase 2: account-based access (no license keys) with a prepaid minute wallet,
 per-mode burn rates, an API key vault, and a pricing/profit engine — merged from
-the RICH X CAM LIVE admin. Schema (3 migrations), three Edge Functions, a 5-tab
-admin panel, and a client SDK. Not yet deployed — follow Setup above. The
+the RICH X CAM LIVE admin. Schema (3 migrations), four Edge Functions (three
+gateway functions + `admin`, which hosts the panel on Supabase's free tier), a
+5-tab admin panel, and a client SDK. Not yet deployed — follow Setup above. The
 `stream-studio` desktop app is unchanged.

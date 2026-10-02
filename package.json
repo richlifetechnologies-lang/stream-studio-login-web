@@ -1,6 +1,6 @@
 {
   "name": "stream-studio-login-web",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Auth, licensing gateway and subscription/usage backend for Stream Studio (Supabase Edge Functions + admin panel + client SDK).",
   "private": false,
   "type": "module",

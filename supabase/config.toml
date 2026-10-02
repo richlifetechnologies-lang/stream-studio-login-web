@@ -27,3 +27,8 @@ verify_jwt = false
 
 [functions.usage-heartbeat]
 verify_jwt = false
+
+# Serves the admin panel HTML. Public shell — access is gated by the admin's own
+# login plus the is_admin RLS policies, not by the function JWT.
+[functions.admin]
+verify_jwt = false
