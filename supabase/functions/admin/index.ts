@@ -2,11 +2,13 @@
 // tier at https://<project>.supabase.co/functions/v1/admin — no separate web
 // host, and the anon key is injected at serve time (never committed).
 //
-// The page is static HTML bundled next to this file. It carries placeholder
-// tokens (SUPABASE_URL / SUPABASE_ANON_KEY) which we replace on each response.
+// The page is static HTML. The Edge Runtime bundler rejects text import
+// attributes, so index.html is inlined into html.ts (regenerate with
+// scripts/gen-admin-html.mjs). It carries placeholder tokens (SUPABASE_URL /
+// SUPABASE_ANON_KEY) which we replace on each response.
 // Access is still gated by the admin's own login + the is_admin RLS policies,
 // so serving the shell publicly (verify_jwt = false) is safe.
-import html from "./index.html" with { type: "text" };
+import { ADMIN_HTML } from "./html.ts";
 
 const PLACEHOLDER_URL = "https://YOUR-PROJECT.supabase.co";
 const PLACEHOLDER_KEY = "YOUR-ANON-KEY";
@@ -22,7 +24,7 @@ Deno.serve((req) => {
     Deno.env.get("SUPABASE_URL") ||
     new URL(req.url).origin;
 
-  const page = html
+  const page = ADMIN_HTML
     .replace(PLACEHOLDER_URL, supabaseUrl)
     .replace(PLACEHOLDER_KEY, anonKey);
 
